@@ -81,7 +81,6 @@ def create_schema(conn: sqlite3.Connection) -> None:
     
     log.info("Schema created: players, openings, games (with FK + CHECK constraints)")
 
-
 # Step 1: Build Database
 def build_tables(conn: sqlite3.Connection, chess: pd.DataFrame) -> None:
     """
@@ -153,7 +152,6 @@ def build_tables(conn: sqlite3.Connection, chess: pd.DataFrame) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_games_winner   ON games(winner)")
     log.info("Indexes created on games(white_id, black_id, opening_code, winner)")
 
-
 def verify_schema(conn: sqlite3.Connection) -> None:
     """
     Assert expected row counts AND confirm FK/CHECK constraints are present.
@@ -196,13 +194,28 @@ def query(conn: sqlite3.Connection, sql: str) -> pd.DataFrame:
     return pd.read_sql(sql, conn)
 
 ########
-  
+def save_question_result(df: pd.DataFrame, q_number: int)-> None:
+    output_dir = os.path.join("output")
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+        log.info(f"Created missing directory: {output_dir}")
+
+    file_path = os.path.join(output_dir, str(q_number)+"_output.txt")
+
+    with open(file_path, "w", encoding="utf-8") as f:
+        f.write(df.to_string(index=False))
+
+    log.info(f"{' ' * num_spaces} Successfully saved Q{q_number} results to: {file_path}")
+
 def result_foramt(df: pd.DataFrame, q_number: int, output_message: str="")-> None:
     log.info(f"Q{q_number} answer -->")
     match q_number:
         case 1:
             log.info(f"{' ' * num_spaces} {output_message} {df['total_games'].iloc[0]} ")
             log.info(f"{' ' * num_spaces}The number of rated games is: {df['rated_games'].iloc[0]}")
+        case 8:
+            log.info(f"{' ' * num_spaces} {output_message}")
+            save_question_result(df, q_number)
         case _: 
             df_string = df.to_string(index=False)
             log.info(f"{' ' * num_spaces} {output_message}")
@@ -326,7 +339,176 @@ def q6(conn: sqlite3.Connection,q_number: int)-> None:
     df = query(conn, sql)
     output_message= "The 5 opening_Codes appers frequlently that are larger than 500:"
     result_foramt(df,q_number,output_message)
-    
+
+#### Stage2 +3
+def q7(conn: sqlite3.Connection,q_number: int)-> None:
+    sql= """
+    SELECT 
+        g.opening_code,
+        o.opening_fullname, -- Assuming the full name column is named opening_name
+        COUNT(*) AS game_count
+    FROM games g
+    JOIN openings o ON g.opening_code = o.opening_code
+    GROUP BY g.opening_code, o.opening_fullname
+    ORDER BY game_count DESC
+    LIMIT 5;
+    """
+    df = query(conn, sql)
+    output_message= "The most 5 played openings with their full name:"
+    result_foramt(df,q_number,output_message)
+
+def q8(conn: sqlite3.Connection,q_number: int)-> None:
+    sql= """
+    SELECT 
+        p.username
+    FROM players p
+    LEFT JOIN games g ON p.username = g.white_id
+    WHERE g.white_id IS NULL;
+    """
+    df = query(conn, sql)
+    output_message= "There are "+ str(len(df)) +" players in the players table who have never appeared as white_id:"
+    result_foramt(df,q_number,output_message)
+
+def q9(conn: sqlite3.Connection,q_number: int)-> None:
+    # Q9 answer -->
+    #                The top 5 total wins per player (as white):
+    #                      player  win_count
+    #                     taranga         34
+    #                        ssf7         29
+    #               hassan1365416         28
+    #               a_p_t_e_m_u_u         25
+    #                  1240100948         22
+    sql= """
+    WITH white_wins_cte AS (
+        SELECT 
+            white_id AS player,
+            COUNT(*) AS win_count
+        FROM games
+        WHERE winner = 'White'
+        GROUP BY white_id
+    )
+    SELECT player, win_count
+    FROM white_wins_cte
+    ORDER BY win_count DESC
+    LIMIT 5;
+    """
+    df = query(conn, sql)
+    output_message= "The top 5 total wins per player (as white):"
+    result_foramt(df,q_number,output_message)
+
+def q10(conn: sqlite3.Connection,q_number: int)-> None:
+    # Q10 answer -->
+    #                combine white wins and black wins into one 'player_wins' table. Who has the most total wins?
+    #                           player  total_wins
+    #                          taranga          72
+    #               vladimir-kramnik-1          50
+    #                    a_p_t_e_m_u_u          46
+    #                        chesscarl          45
+    #                     ducksandcats          43
+    sql= """
+    WITH player_wins AS (
+        -- Get all wins as white
+        SELECT white_id AS player, COUNT(*) AS wins
+        FROM games
+        WHERE winner = 'White'
+        GROUP BY white_id
+        
+        UNION ALL
+        
+        -- Get all wins as black
+        SELECT black_id AS player, COUNT(*) AS wins
+        FROM games
+        WHERE winner = 'Black'
+        GROUP BY black_id
+    )
+    SELECT 
+        player, 
+        SUM(wins) AS total_wins
+    FROM player_wins
+    GROUP BY player
+    ORDER BY total_wins DESC
+    LIMIT 5;
+    """
+    df = query(conn, sql)
+    output_message= "combine white wins and black wins into one 'player_wins' table. Who has the most total wins?"
+    result_foramt(df,q_number,output_message)
+
+def q11(conn: sqlite3.Connection,q_number: int)-> None:
+    # Q11 answer -->
+    #               RANK each game holds for that white player by white_rating (highest rating = rank 1)
+    #               game_id            white_id  white_rating  rating_rank
+    #                 10139             --jim--           986            1
+    #                  9788 -l-_jedi_knight_-l-          1564            1
+    #                  9795 -l-_jedi_knight_-l-          1511            2
+    #                  9799 -l-_jedi_knight_-l-          1500            3
+    #                  9793 -l-_jedi_knight_-l-          1486            4
+    #                  9791 -l-_jedi_knight_-l-          1473            5
+    #                  9789 -l-_jedi_knight_-l-          1465            6
+    #                 10031              -mati-          1252            1
+    #                 10054             -pavel-          1383            1
+    #                 11091             1063314          1666            1
+    sql= """
+    SELECT 
+        game_id,
+        white_id,
+        white_rating,
+        RANK() OVER (
+            PARTITION BY white_id 
+            ORDER BY white_rating DESC
+        ) AS rating_rank
+    FROM games
+    LIMIT 10;
+    """
+    df = query(conn, sql)
+    output_message= "RANK each game holds for that white player by white_rating (highest rating = rank 1)"
+    result_foramt(df,q_number,output_message)
+
+def q12(conn: sqlite3.Connection,q_number: int)-> None:
+    # Q12 answer -->
+    #                LAG: show each game's white_rating and the previous game's white_rating for the same player. Filter to players with 5+ games:
+    #                game_id            white_id  white_rating  previous_white_rating
+    #                   9788 -l-_jedi_knight_-l-          1564                    NaN
+    #                   9789 -l-_jedi_knight_-l-          1465                 1564.0
+    #                   9791 -l-_jedi_knight_-l-          1473                 1465.0
+    #                   9793 -l-_jedi_knight_-l-          1486                 1473.0
+    #                   9795 -l-_jedi_knight_-l-          1511                 1486.0
+    #                   9799 -l-_jedi_knight_-l-          1500                 1511.0
+    #                   9800          1240100948          1700                    NaN
+    #                   9801          1240100948          1711                 1700.0
+    #                   9802          1240100948          1722                 1711.0
+    #                   9804          1240100948          1704                 1722.0
+    sql= """
+    WITH rated_games_lag AS (
+        SELECT 
+            game_id,
+            white_id,
+            white_rating,
+            -- Peek at the previous game's rating for this specific player
+            LAG(white_rating, 1) OVER (
+                PARTITION BY white_id 
+                ORDER BY game_id ASC
+            ) AS previous_white_rating,
+            -- Count total games for this player to meet the 5+ games criteria
+            COUNT(*) OVER (
+                PARTITION BY white_id
+            ) AS total_player_games
+        FROM games
+    )
+    SELECT 
+        game_id,
+        white_id,
+        white_rating,
+        previous_white_rating
+    FROM rated_games_lag
+    WHERE total_player_games >= 5
+    LIMIT 10;
+    """
+    df = query(conn, sql)
+    output_message= "LAG: show each game's white_rating and the previous game's white_rating for the same player. Filter to players with 5+ games:"
+    result_foramt(df,q_number,output_message)
+
+
+
 def run_assignment(conn: sqlite3.Connection) -> None:
     """Stage 1 to 4 then Q1 to Q5"""
     # Make sure ti use the function query we built above! -Hend
@@ -348,6 +530,24 @@ def run_assignment(conn: sqlite3.Connection) -> None:
     ########Q6
     q_number +=1
     q6(conn,q_number)
+    ########Q7
+    q_number +=1
+    q7(conn,q_number)
+    ########Q8
+    q_number +=1
+    q8(conn,q_number)
+    ########Q9
+    q_number +=1
+    q9(conn,q_number)
+    ########Q10
+    q_number +=1
+    q10(conn,q_number)
+    ########Q11
+    q_number +=1
+    q11(conn,q_number)
+    ########Q12
+    q_number +=1
+    q12(conn,q_number)
 
     conn.close()
 
