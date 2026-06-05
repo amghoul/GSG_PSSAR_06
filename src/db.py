@@ -4,7 +4,7 @@ import logging
 import pandas as pd
 
 log = logging.getLogger(__name__)
-
+num_spaces = len("Q01 answer -->")
 
 # Step 0: Create Schema
 def create_schema(conn: sqlite3.Connection) -> None:
@@ -195,12 +195,163 @@ def query(conn: sqlite3.Connection, sql: str) -> pd.DataFrame:
     """Convenience wrapper: SQL → DataFrame."""
     return pd.read_sql(sql, conn)
 
+########
+  
+def result_foramt(df: pd.DataFrame, q_number: int, output_message: str="")-> None:
+    log.info(f"Q{q_number} answer -->")
+    match q_number:
+        case 1:
+            log.info(f"{' ' * num_spaces} {output_message} {df['total_games'].iloc[0]} ")
+            log.info(f"{' ' * num_spaces}The number of rated games is: {df['rated_games'].iloc[0]}")
+        case _: 
+            df_string = df.to_string(index=False)
+            log.info(f"{' ' * num_spaces} {output_message}")
+            for line in df_string.splitlines():
+                log.info(f"{' ' * num_spaces}{line}")
+        
+def q1(conn: sqlite3.Connection,q_number: int)-> None:
+    # Q01 answer -->
+    # The total games in the database is: 20058 
+    # The number of rated games is: 16155
+    sql= """
+        SELECT COUNT(*) AS total_games,
+        SUM(rated) AS rated_games
+        FROM games;
+        """
+    df = query(conn, sql)
+    output_message= "The total games in the database is: "
+    result_foramt(df,q_number,output_message)
 
+def q2(conn: sqlite3.Connection,q_number: int)-> None:
+    ######### Q2
+    # Q02 answer --> The victory_status distinct values and their counts:
+    #                victory_status  victory_count
+    #                       Resign          11147
+    #                   Out of Time           1680
+    #                          Mate           6325
+    #                         Draw            906
+    sql= """
+    SELECT 
+        victory_status, 
+        COUNT(*) AS victory_count
+    FROM games
+    GROUP BY victory_status
+    ORDER BY victory_status DESC;
+        """
+    df = query(conn, sql)
+    output_message= "The victory_status distinct values and their counts:"
+    result_foramt(df,q_number,output_message)
+    
+def q3(conn: sqlite3.Connection,q_number: int)-> None:
+    # Q03 answer --> The 10 games with most turns are:
+    #                game_id winner  turns
+    #                  11555  White    349
+    #                  13860  White    349
+    #                  16387   Draw    259
+    #                   4237   Draw    255
+    #                  16646   Draw    226
+    #                  15479   Draw    222
+    #                  16944  Black    222
+    #                   6777   Draw    221
+    #                  13231  Black    218
+    #                  13556   Draw    216
+    sql= """
+    SELECT 
+        game_id, winner, turns
+    FROM games
+    ORDER BY turns DESC
+    LIMIT 10;
+        """
+    df = query(conn, sql)
+    output_message= "The 10 games with most turns are:"
+    result_foramt(df,q_number,output_message)
+
+def q4(conn: sqlite3.Connection,q_number: int)-> None:
+    # Q04 answer --> The Win rate for ech winnder category (White, Black, and Draw):
+    #               winner  total_wins  win_rate
+    #                White       10001     49.86
+    #                Black        9107     45.40
+    #                 Draw         950      4.74
+    sql= """
+    SELECT 
+        winner AS winner,
+        COUNT(*) AS total_wins,
+        ROUND(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM games), 2) AS win_rate
+    FROM games
+    GROUP BY winner
+    ORDER BY win_rate DESC;
+        """
+    df = query(conn, sql)
+    output_message= "The Win rate for ech winnder category (White, Black, and Draw):"
+    result_foramt(df,q_number,output_message)
+
+def q5(conn: sqlite3.Connection,q_number: int)-> None:
+    # Q05 answer --> The average and maximum number of turn for each victory_Status:
+    #               victory_status  average_turns  max_turns
+    #                         Draw          83.78        259
+    #                  Out of Time          72.74        349
+    #                         Mate          65.42        222
+    #                       Resign          53.91        218
+    sql= """
+        SELECT 
+            victory_status,
+            ROUND(AVG(turns), 2) AS average_turns,
+            MAX(turns) AS max_turns
+        FROM games
+        GROUP BY victory_status
+        ORDER BY average_turns DESC;
+            """
+    df = query(conn, sql)
+    output_message= "The average and maximum number of turn for each victory_Status:"
+    result_foramt(df,q_number,output_message)
+
+def q6(conn: sqlite3.Connection,q_number: int)-> None:
+    # Q06 answer --> The 5 opening_Codes appers frequlently that are larger than 500:
+    #               opening_code  game_count
+    #                        A00        1007
+    #                        C00         844
+    #                        D00         739
+    #                        B01         716
+    #                        C41         691
+    sql= """
+    SELECT 
+        opening_code,
+        COUNT(*) AS game_count
+    FROM games
+    GROUP BY opening_code
+    HAVING game_count > 500
+    ORDER BY game_count DESC
+    LIMIT 5;
+        """
+    df = query(conn, sql)
+    output_message= "The 5 opening_Codes appers frequlently that are larger than 500:"
+    result_foramt(df,q_number,output_message)
+    
 def run_assignment(conn: sqlite3.Connection) -> None:
     """Stage 1 to 4 then Q1 to Q5"""
     # Make sure ti use the function query we built above! -Hend
+    ##########Q1
+    q_number = 1
+    q1(conn,q_number)
+    ##########Q2
+    q_number +=1
+    q2(conn,q_number)
+    ##########Q3
+    q_number +=1
+    q3(conn,q_number)
+    ########Q4
+    q_number +=1
+    q4(conn,q_number)
+    ########Q5
+    q_number +=1
+    q5(conn,q_number)
+    ########Q6
+    q_number +=1
+    q6(conn,q_number)
 
+    conn.close()
 
+#######
 def main():
     print("This is for session 6: testing databases")
 
@@ -225,6 +376,7 @@ def main():
     log.info(f"Database tables have been built. {os.path.getsize(db_path)/1024:.2f} KB" )
 
     # call the asignment function to run the queries
+    run_assignment(conn)
     
     conn.close()
 
