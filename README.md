@@ -1,4 +1,4 @@
-# Chess Database — Extended Schema Documentation
+# Chess Database — Extended Schema Documentation (Table Format)
 
 This repository houses a clean, normalized relational database built from raw chess game logs (`chess_games.csv`). The pipeline splits flat data across three specialized tables—**players**, **openings**, and **games**—enforcing strict validation constraints via SQLite to guarantee structural and relational integrity.
 
@@ -14,82 +14,41 @@ Using an explicit `CREATE TABLE` structure instead of automated inference (such 
 ### Table A: players
 Maintains a definitive list of unique participants across the platform.
 
-* **username**
-    * *Type:* TEXT
-    * *Constraints:* PRIMARY KEY, NOT NULL
-    * *Description:* The unique identifier / handle of the chess player.
-* **last_rating**
-    * *Type:* INTEGER
-    * *Constraints:* NOT NULL
-    * *Description:* The most recent Elo rating recorded for the player across their latest processed match.
-* **total_games**
-    * *Type:* INTEGER
-    * *Constraints:* NOT NULL, DEFAULT 0
-    * *Description:* The cumulative count of matches played (combining White and Black appearances).
+| Column Name | Data Type | Primary/Foreign Key | Constraints | Description / Business Rules |
+| :--- | :--- | :--- | :--- | :--- |
+| **username** | TEXT | **PRIMARY KEY** | NOT NULL | The unique identifier / handle of the chess player. |
+| **last_rating** | INTEGER | *None* | NOT NULL | The most recent Elo rating recorded for the player across their latest processed match. |
+| **total_games** | INTEGER | *None* | NOT NULL, DEFAULT 0 | The cumulative count of matches played (combining White and Black appearances). |
+
+---
 
 ### Table B: openings
 Acts as a standardized reference lookup for distinct tactical openings.
 
-* **opening_code**
-    * *Type:* TEXT
-    * *Constraints:* PRIMARY KEY, NOT NULL
-    * *Description:* The standardized ECO classification code (e.g., C00, A00).
-* **opening_shortname**
-    * *Type:* TEXT
-    * *Constraints:* NOT NULL
-    * *Description:* The broad family categorization label (e.g., French Defense).
-* **opening_fullname**
-    * *Type:* TEXT
-    * *Constraints:* NOT NULL
-    * *Description:* The highly descriptive variation name (e.g., French Defense: King's Indian Attack).
+| Column Name | Data Type | Primary/Foreign Key | Constraints | Description / Business Rules |
+| :--- | :--- | :--- | :--- | :--- |
+| **opening_code** | TEXT | **PRIMARY KEY** | NOT NULL | The standardized ECO classification code (e.g., C00, A00). |
+| **opening_shortname** | TEXT | *None* | NOT NULL | The broad family categorization label (e.g., French Defense). |
+| **opening_fullname** | TEXT | *None* | NOT NULL | The highly descriptive variation name (e.g., French Defense: King's Indian Attack). |
+
+---
 
 ### Table C: games
 The central transaction matrix recording the full profile of played matches.
 
-* **game_id**
-    * *Type:* INTEGER
-    * *Constraints:* PRIMARY KEY, NOT NULL
-    * *Description:* Unique transactional record key identifying each match.
-* **white_id**
-    * *Type:* TEXT
-    * *Constraints:* NOT NULL, FOREIGN KEY REFERENCES players(username)
-    * *Description:* Relational link identifying the player controlling the White pieces.
-* **black_id**
-    * *Type:* TEXT
-    * *Constraints:* NOT NULL, FOREIGN KEY REFERENCES players(username)
-    * *Description:* Relational link identifying the player controlling the Black pieces.
-* **winner**
-    * *Type:* TEXT
-    * *Constraints:* NOT NULL, CHECK(winner IN ('White', 'Black', 'Draw'))
-    * *Description:* The resulting outcome of the match.
-* **victory_status**
-    * *Type:* TEXT
-    * *Constraints:* NOT NULL
-    * *Description:* The operational conclusion mode (e.g., Mate, Resign, Draw, Out of Time).
-* **turns**
-    * *Type:* INTEGER
-    * *Constraints:* NOT NULL, CHECK(turns >= 1)
-    * *Description:* Total ply/move iterations completed during the confrontation.
-* **time_increment**
-    * *Type:* TEXT
-    * *Constraints:* NOT NULL
-    * *Description:* Time control configurations set up for the arena.
-* **rated**
-    * *Type:* INTEGER
-    * *Constraints:* NOT NULL, CHECK(rated IN (0, 1))
-    * *Description:* Boolean indicator flag where 1 denotes official ladder matches and 0 casual ones.
-* **opening_code**
-    * *Type:* TEXT
-    * *Constraints:* NOT NULL, FOREIGN KEY REFERENCES openings(opening_code)
-    * *Description:* Relational link tracking the deployed tactical opener.
-* **white_rating**
-    * *Type:* INTEGER
-    * *Constraints:* NOT NULL
-    * *Description:* The precise Elo rating of the White player at the exact moment of this match.
-* **black_rating**
-    * *Type:* INTEGER
-    * *Constraints:* NOT NULL
-    * *Description:* The precise Elo rating of the Black player at the exact moment of this match.
+| Column Name | Data Type | Primary/Foreign Key | Constraints | Description / Business Rules |
+| :--- | :--- | :--- | :--- | :--- |
+| **game_id** | INTEGER | **PRIMARY KEY** | NOT NULL | Unique transactional record key identifying each match. |
+| **white_id** | TEXT | **FOREIGN KEY** | NOT NULL | Relational link identifying the player controlling the White pieces. References `players(username)`. |
+| **black_id** | TEXT | **FOREIGN KEY** | NOT NULL | Relational link identifying the player controlling the Black pieces. References `players(username)`. |
+| **winner** | TEXT | *None* | NOT NULL, CHECK | The resulting outcome of the match. CHECK ensures values are ('White', 'Black', 'Draw'). |
+| **victory_status** | TEXT | *None* | NOT NULL | The operational conclusion mode (e.g., Mate, Resign, Draw, Out of Time). |
+| **turns** | INTEGER | *None* | NOT NULL, CHECK | Total ply/move iterations completed during the confrontation. CHECK ensures `turns >= 1`. |
+| **time_increment** | TEXT | *None* | NOT NULL | Time control configurations set up for the arena. |
+| **rated** | INTEGER | *None* | NOT NULL, CHECK | Boolean indicator flag where 1 denotes official ladder matches and 0 casual ones. CHECK ensures `rated IN (0, 1)`. |
+| **opening_code** | TEXT | **FOREIGN KEY** | NOT NULL | Relational link tracking the deployed tactical opener. References `openings(opening_code)`. |
+| **white_rating** | INTEGER | *None* | NOT NULL | The precise Elo rating of the White player at the exact moment of this match. |
+| **black_rating** | INTEGER | *None* | NOT NULL | The precise Elo rating of the Black player at the exact moment of this match. |
 
 ---
 
