@@ -199,23 +199,44 @@ def save_question_result(df: pd.DataFrame, q_number: int)-> None:
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
         log.info(f"Created missing directory: {output_dir}")
-
-    file_path = os.path.join(output_dir, str(q_number)+"_output.txt")
+    if q_number ==14:
+        file_path = os.path.join(output_dir, "New_Q_"+ str(q_number -12)+"_output.csv")
+    elif q_number ==17:
+        file_path = os.path.join(output_dir, "New_Q_"+ str(q_number -12)+"_game_ranks.csv")    
+    else:
+        file_path = os.path.join(output_dir, str(q_number)+"_output.csv")
 
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(df.to_string(index=False))
-
-    log.info(f"{' ' * num_spaces} Successfully saved Q{q_number} results to: {file_path}")
+    if q_number ==14 or q_number ==17:
+        log.info(f"{' ' * num_spaces} Successfully saved New_Q{q_number-12} results to: {file_path}")
+    else:
+        log.info(f"{' ' * num_spaces} Successfully saved Q{q_number} results to: {file_path}")
 
 def result_foramt(df: pd.DataFrame, q_number: int, output_message: str="")-> None:
-    log.info(f"Q{q_number} answer -->")
+    ## Formating the log messages and the output for each question
+    if q_number < 13:
+        log.info(f"Q{q_number} answer -->")
     match q_number:
         case 1:
             log.info(f"{' ' * num_spaces} {output_message} {df['total_games'].iloc[0]} ")
             log.info(f"{' ' * num_spaces}The number of rated games is: {df['rated_games'].iloc[0]}")
-        case 8:
+        case 8 | 14 | 17:
+            if q_number >= 13:
+               new_q_number = q_number-12
+               log.info(f"New_Q{new_q_number} answer -->")
+               log.info(f"{' ' * num_spaces} {output_message}")
+               save_question_result(df, q_number)
+            else:   
+                log.info(f"{' ' * num_spaces} {output_message}")
+                save_question_result(df, q_number)
+            
+        case 13 | 15 | 16:
+            log.info(f"New_Q{q_number-12} answer -->")
+            df_string = df.to_string(index=False)
             log.info(f"{' ' * num_spaces} {output_message}")
-            save_question_result(df, q_number)
+            for line in df_string.splitlines():
+                log.info(f"{' ' * num_spaces}{line}")
         case _: 
             df_string = df.to_string(index=False)
             log.info(f"{' ' * num_spaces} {output_message}")
@@ -507,10 +528,196 @@ def q12(conn: sqlite3.Connection,q_number: int)-> None:
     output_message= "LAG: show each game's white_rating and the previous game's white_rating for the same player. Filter to players with 5+ games:"
     result_foramt(df,q_number,output_message)
 
+def check_query_plans(conn_after: sqlite3.Connection, DB_FILE: str)-> None:
+    # Compare After and before indexing Explain Query Plan
+    # THE "AFTER" STATE (Your Real Database with Indexes)
+    # - === AFTER INDEXES (Real Database File) ===
+    # id  parent  notused                                                detail
+    # 3       0       61 SEARCH games USING INDEX idx_games_white (white_id=?)
+    # === BEFORE INDEXES (Simulated Unindexed Table) ===
+    # id  parent  notused     detail
+    # 2       0      216 SCAN games
+    df_after = pd.read_sql_query("""
+        EXPLAIN QUERY PLAN 
+        SELECT * FROM games WHERE white_id = '-l-_jedi_knight_-l-';
+    """, conn_after)
+    
+    log.info("=== AFTER INDEXES (Real Database File) ===")
+    log.info(df_after.to_string(index=False))
+    #conn_after.close()
+    # THE "BEFORE" STATE (Temporary Unindexed Database)
+    # Create a fresh, temporary database in RAM
+    conn_before = sqlite3.connect(":memory:")
+    
+    # Re-connect to your real DB just to copy the data out
+    conn_real = sqlite3.connect(DB_FILE)
+    
+    games_df = pd.read_sql_query("SELECT * FROM games;", conn_real)
+    conn_real.close()
+    
+    # Dump the data into our in-memory DB *WITHOUT* creating any indexes
+    games_df.to_sql("games", conn_before, index=False, if_exists="replace")
+    
+    df_before = pd.read_sql_query("""
+        EXPLAIN QUERY PLAN 
+        SELECT * FROM games WHERE white_id = '-l-_jedi_knight_-l-';
+    """, conn_before)
+    
+    log.info("\n=== BEFORE INDEXES (Simulated Unindexed Table) ===")
+    log.info(df_before.to_string(index=False))
+    conn_before.close()
 
+###########
+def new_q1(conn: sqlite3.Connection,q_number: int)-> None:
+    # New_Q1 answer -->
+    #                Which opening code has the highest Draw rate?
+    #               opening_code  total_games  draw_count  draw_rate_percent
+    #                        D43           33           7              21.21
+    #                        C43           19           4              21.05
+    #                        A28           24           5              20.83
+    #                        A05           16           3              18.75
+    #                        C03           16           3              18.75
+    sql= """
+        SELECT 
+        opening_code,
+        COUNT(*) AS total_games,
+        SUM(CASE WHEN winner = 'Draw' THEN 1 ELSE 0 END) AS draw_count,
+        ROUND(
+            SUM(CASE WHEN winner = 'Draw' THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 
+            2
+        ) AS draw_rate_percent
+        FROM games
+        GROUP BY opening_code
+        HAVING total_games > 15
+        ORDER BY draw_rate_percent DESC
+        LIMIT 5;
+        """
+    df = query(conn, sql)
+    output_message= "Which opening code has the highest Draw rate?"
+    result_foramt(df,q_number,output_message)
 
-def run_assignment(conn: sqlite3.Connection) -> None:
-    """Stage 1 to 4 then Q1 to Q5"""
+def new_q2(conn: sqlite3.Connection,q_number: int)-> None:
+    # New_Q2 answer -->
+#                List all players who won more games as Black than as Whit:
+#                Successfully saved Q2 results to: ..\output\New_Q_2_output.csv
+    sql= """
+        WITH player_win_counts AS (
+        SELECT 
+            username,
+            -- Count how many times this player won playing as White
+            SUM(CASE WHEN g.white_id = p.username AND g.winner = 'White' THEN 1 ELSE 0 END) AS white_wins,
+            -- Count how many times this player won playing as Black
+            SUM(CASE WHEN g.black_id = p.username AND g.winner = 'Black' THEN 1 ELSE 0 END) AS black_wins
+        FROM players p
+        LEFT JOIN games g ON p.username = g.white_id OR p.username = g.black_id
+        GROUP BY p.username
+    )
+    SELECT 
+        username,
+        white_wins,
+        black_wins
+    FROM player_win_counts
+    WHERE black_wins > white_wins
+    ORDER BY black_wins DESC;
+        """
+    df = query(conn, sql)
+    output_message= "List all players who won more games as Black than as Whit:"
+    result_foramt(df,q_number,output_message)
+
+def new_q3(conn: sqlite3.Connection,q_number: int)-> None:
+    # New_Q3 answer -->
+    #                For each victory_status, which opening is most common?
+    #               victory_status opening_code  game_count
+    #                         Draw          A00          39
+    #                         Mate          A00         416
+    #                  Out of Time          A00          79
+    #                       Resign          A00         473
+    sql= """
+        WITH opening_counts AS (
+        SELECT 
+            victory_status,
+            opening_code,
+            COUNT(*) AS game_count
+        FROM games
+        GROUP BY victory_status, opening_code
+    ),
+    ranked_openings AS (
+        SELECT 
+            victory_status,
+            opening_code,
+            game_count,
+            ROW_NUMBER() OVER (
+                PARTITION BY victory_status 
+                ORDER BY game_count DESC
+            ) AS rank
+        FROM opening_counts
+    )
+    SELECT 
+        victory_status,
+        opening_code,
+        game_count
+    FROM ranked_openings
+    WHERE rank = 1;
+        """
+    df = query(conn, sql)
+    output_message= "For each victory_status, which opening is most common?"
+    result_foramt(df,q_number,output_message)
+
+def new_q4(conn: sqlite3.Connection,q_number: int)-> None:
+    # New_Q4 answer -->
+    #                Find the top-3 opening families by avg turns using opening_fullname:
+    #                       opening_family  avg_turns  total_games
+    #               Queen's Indian Defense      70.86           50
+    #                King's Indian Defense      70.79          136
+    #                         Queen's Pawn      68.03           75
+    sql= """
+        WITH split_families AS (
+        SELECT 
+            turns,
+            -- If there is a colon, slice the text before it. Otherwise, keep the whole name.
+            CASE 
+                WHEN INSTR(opening_fullname, ':') > 0 
+                THEN SUBSTR(opening_fullname, 1, INSTR(opening_fullname, ':') - 1)
+                ELSE opening_fullname 
+            END AS opening_family
+        FROM games g
+        JOIN openings o ON g.opening_code = o.opening_code
+    )
+    SELECT 
+        opening_family,
+        ROUND(AVG(turns), 2) AS avg_turns,
+        COUNT(*) AS total_games
+    FROM split_families
+    GROUP BY opening_family
+    HAVING total_games > 10 -- Prevents single outlier games from skewing the averages
+    ORDER BY avg_turns DESC
+    LIMIT 3;
+        """
+    df = query(conn, sql)
+    output_message= "Find the top-3 opening families by avg turns using opening_fullname:"
+    result_foramt(df,q_number,output_message)
+
+def new_q5(conn: sqlite3.Connection,q_number: int)-> None:
+    # New_Q5 answer -->
+    #                Using a window function: rank each player's games by turns (longest = 1). Save the result to data/processed/game_ranks.csv.
+    #                Successfully saved Q5 results to: ..\output\New_Q_5_game_ranks.csv
+    sql= """
+    SELECT 
+        game_id,
+        white_id AS player,
+        turns,
+        RANK() OVER (
+            PARTITION BY white_id 
+            ORDER BY turns DESC
+        ) AS game_turn_rank
+    FROM games;
+        """
+    df = query(conn, sql)
+    output_message= "Using a window function: rank each player's games by turns (longest = 1). Save the result to data/processed/game_ranks.csv."
+    result_foramt(df,q_number,output_message)
+
+def run_assignment_01(conn: sqlite3.Connection) -> None:
+    """Stage 1 to 4 then Q1 to Q12"""
     # Make sure ti use the function query we built above! -Hend
     ##########Q1
     q_number = 1
@@ -549,7 +756,26 @@ def run_assignment(conn: sqlite3.Connection) -> None:
     q_number +=1
     q12(conn,q_number)
 
-    conn.close()
+    #conn.close()
+
+def run_assignment_02(conn: sqlite3.Connection, DB_FILE: str) -> None:
+    #Execute query PLan check and 5 new questions 
+    check_query_plans(conn, DB_FILE)
+    ####### new_Q1
+    q_number = 13
+    new_q1(conn, q_number)
+    ####### new_Q2
+    q_number +=1
+    new_q2(conn, q_number)
+    ####### new_Q3
+    q_number +=1
+    new_q3(conn, q_number)
+    ####### new_Q4
+    q_number +=1
+    new_q4(conn, q_number)
+    ####### new_Q5
+    q_number +=1
+    new_q5(conn, q_number)   
 
 #######
 def main():
@@ -576,7 +802,8 @@ def main():
     log.info(f"Database tables have been built. {os.path.getsize(db_path)/1024:.2f} KB" )
 
     # call the asignment function to run the queries
-    run_assignment(conn)
+    run_assignment_01(conn)
+    run_assignment_02(conn, db_path)
     
     conn.close()
 
