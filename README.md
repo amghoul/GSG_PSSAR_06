@@ -1,4 +1,4 @@
-# Chess Database — Extended Schema Documentation (Table Format)
+# Chess Database — Extended Schema Documentation
 
 This repository houses a clean, normalized relational database built from raw chess game logs (`chess_games.csv`). The pipeline splits flat data across three specialized tables—**players**, **openings**, and **games**—enforcing strict validation constraints via SQLite to guarantee structural and relational integrity.
 
