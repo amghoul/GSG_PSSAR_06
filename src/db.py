@@ -196,32 +196,39 @@ def query(conn: sqlite3.Connection, sql: str) -> pd.DataFrame:
 ########
 def save_question_result(df: pd.DataFrame, q_number: int)-> None:
     output_dir = os.path.join("output")
+    if q_number == 0:
+        output_dir = os.path.join("data","processed")
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
         log.info(f"Created missing directory: {output_dir}")
-    if q_number ==14:
+    if q_number == 0:
+        file_path = os.path.join(output_dir, "features.csv")
+    elif q_number ==14:
         file_path = os.path.join(output_dir, "New_Q_"+ str(q_number -12)+"_output.csv")
     elif q_number ==17:
         file_path = os.path.join(output_dir, "New_Q_"+ str(q_number -12)+"_game_ranks.csv")    
     else:
         file_path = os.path.join(output_dir, str(q_number)+"_output.csv")
 
-    with open(file_path, "w", encoding="utf-8") as f:
-        f.write(df.to_string(index=False))
+    #with open(file_path, "w", encoding="utf-8") as f:
+    #    f.write(df.to_string(index=False))
+    df.to_csv(file_path, index=False)
     if q_number ==14 or q_number ==17:
         log.info(f"{' ' * num_spaces} Successfully saved New_Q{q_number-12} results to: {file_path}")
+    elif q_number == 0:
+       log.info(f"{' ' * num_spaces} Successfully saved results to: {file_path}") 
     else:
         log.info(f"{' ' * num_spaces} Successfully saved Q{q_number} results to: {file_path}")
 
-def result_foramt(df: pd.DataFrame, q_number: int, output_message: str="")-> None:
+def result_foramt(df: pd.DataFrame, q_number: int=0, output_message: str="")-> None:
     ## Formating the log messages and the output for each question
-    if q_number < 13:
+    if q_number < 13 and q_number > 0:
         log.info(f"Q{q_number} answer -->")
     match q_number:
         case 1:
             log.info(f"{' ' * num_spaces} {output_message} {df['total_games'].iloc[0]} ")
             log.info(f"{' ' * num_spaces}The number of rated games is: {df['rated_games'].iloc[0]}")
-        case 8 | 14 | 17:
+        case 0 | 8 | 14 | 17:
             if q_number >= 13:
                new_q_number = q_number-12
                log.info(f"New_Q{new_q_number} answer -->")
@@ -777,6 +784,40 @@ def run_assignment_02(conn: sqlite3.Connection, DB_FILE: str) -> None:
     q_number +=1
     new_q5(conn, q_number)   
 
+def create_feature_table(conn: sqlite3.Connection,q_number: int)-> None:
+    sql = """
+    WITH games_with_experience AS (
+        SELECT 
+            g.game_id,
+            g.turns,
+            g.rated,
+            g.winner,
+            -- Calculate rating difference
+            ABS(g.white_rating - g.black_rating) AS rating_diff,
+            -- Pull short name from your openings relation
+            o.opening_shortname AS opening_shortname, 
+            -- Calculate white_experience: total games white played before/including this one
+            ROW_NUMBER() OVER (
+                PARTITION BY g.white_id 
+                ORDER BY g.game_id ASC
+            ) AS white_experience
+        FROM games g
+        LEFT JOIN openings o ON g.opening_code = o.opening_code
+    )
+    SELECT 
+        game_id,
+        rating_diff,
+        turns,
+        rated,
+        opening_shortname,
+        white_experience,
+        winner
+    FROM games_with_experience;
+    """
+    df = query(conn, sql)
+    output_message= "Creating a feature table"
+    result_foramt(df,q_number,output_message)
+
 #######
 def main():
     print("This is for session 6: testing databases")
@@ -804,7 +845,8 @@ def main():
     # call the asignment function to run the queries
     run_assignment_01(conn)
     run_assignment_02(conn, db_path)
-    
+    create_feature_table(conn,0)
+
     conn.close()
 
 if __name__ == "__main__":
